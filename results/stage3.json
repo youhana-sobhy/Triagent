@@ -1,0 +1,10 @@
+{
+  "run_at": "2026-11-20T20:31:59+00:00",
+  "model": "claude-sonnet-5-5",
+  "n": 10,
+  "correct": 10,
+  "breakdown": {
+    "correct": 10
+  },
+  "wrong": {}
+}

@@ -1,0 +1,16 @@
+{
+  "run_at": "2026-11-20T20:31:13+00:00",
+  "prompt": "v2",
+  "dataset": "held_out.jsonl",
+  "model": "claude-sonnet-5-5",
+  "grader_model": "claude-opus-5-5",
+  "n": 10,
+  "severity_correct": 8,
+  "tricky_correct": 3,
+  "tricky_n": 3,
+  "avg_clarity": 5.0,
+  "failures": [
+    "h03",
+    "h08"
+  ]
+}

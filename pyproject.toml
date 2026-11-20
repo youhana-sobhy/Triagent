@@ -1,0 +1,10 @@
+[project]
+name = "triagent"
+version = "1.0.0"
+description = "An alert triage assistant (RAG + tool use + guardrails) built together with the evals that measure it."
+requires-python = ">=3.12"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

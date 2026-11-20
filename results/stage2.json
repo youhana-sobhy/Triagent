@@ -1,0 +1,22 @@
+{
+  "run_at": "2026-11-20T20:31:38+00:00",
+  "retrieval": {
+    "labeled": 13,
+    "recall_at_1": 13,
+    "recall_at_3": 13,
+    "misses_at_3": []
+  },
+  "answers": {
+    "model": "claude-sonnet-5-5",
+    "n": 20,
+    "citation_correct": 19,
+    "grounded": 20,
+    "severity_correct": 19,
+    "not_ok": {
+      "a19": "model ignored good context"
+    },
+    "severity_failures": [
+      "a16"
+    ]
+  }
+}

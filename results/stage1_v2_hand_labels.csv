@@ -1,0 +1,3 @@
+id,human,grader,diff,alert,explanation
+a01,3,5,2,db-01: disk usage 95% on /var/lib/postgresql,"The /var/lib/postgresql volume on db-01 is 95% full, leaving little room for data growth and WAL files. If it fills up, PostgreSQL can stop accepting writes or crash, causing a database outage, so space should be freed or expanded immediately."
+a02,1,5,4,CPU 78% on web-03 for 5 min,"CPU utilization on web-03 has stayed at 78% for 5 minutes, which is elevated but not saturated. There is no confirmed impact yet, but if load keeps climbing, web-03 could slow down and affect response times, so it is worth watching."

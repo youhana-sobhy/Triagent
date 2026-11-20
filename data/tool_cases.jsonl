@@ -1,0 +1,10 @@
+{"id": "t01", "alert": "db-01: disk usage 95% on /var/lib/postgresql", "expected_tool": "get_server_status", "expected_server": "db-01", "why": "Server named; status confirms growth rate."}
+{"id": "t02", "alert": "web-03: CPU 100% for 30 min, request latency p99 8s", "expected_tool": "get_server_status", "expected_server": "web-03", "why": "Server named."}
+{"id": "t03", "alert": "Payment worker on worker-04 keeps crashing", "expected_tool": "get_server_status", "expected_server": "worker-04", "why": "Server named mid-sentence."}
+{"id": "t04", "alert": "High memory on auth-01 (91%), auth-svc OOM-killed", "expected_tool": "get_server_status", "expected_server": "auth-01", "why": "Server named in parentheses-heavy text."}
+{"id": "t05", "alert": "api-gw returning HTTP 5xx errors", "expected_tool": "get_server_status", "expected_server": "api-gw", "why": "Service name is the server name."}
+{"id": "t06", "alert": "mail-01: SMTP queue length 1200 (normal < 100)", "expected_tool": "get_server_status", "expected_server": "mail-01", "why": "Server named, even though no runbook covers it."}
+{"id": "t07", "alert": "Disk alert on the second database server", "expected_tool": null, "expected_server": null, "why": "No server name given; calling db-02 would be a guess."}
+{"id": "t08", "alert": "", "expected_tool": null, "expected_server": null, "why": "Empty alert; nothing to look up."}
+{"id": "t09", "alert": "something seems slow on the app", "expected_tool": null, "expected_server": null, "why": "Vague; no server."}
+{"id": "t10", "alert": "dsk;;; db-0? 9?% /var/l!b/pstg ##ERR", "expected_tool": null, "expected_server": null, "why": "Server name unreadable; db-01 or db-02 would be a guess."}

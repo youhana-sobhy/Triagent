@@ -1,0 +1,11 @@
+id,alert,expected,calls,grade,correct,error,turns
+t01,db-01: disk usage 95% on /var/lib/postgresql,get_server_status(db-01),"[""get_server_status(db-01)""]",correct,True,,2
+t02,"web-03: CPU 100% for 30 min, request latency p99 8s",get_server_status(web-03),"[""get_server_status(web-03)""]",correct,True,,2
+t03,Payment worker on worker-04 keeps crashing,get_server_status(worker-04),"[""get_server_status(worker-04)""]",correct,True,,2
+t04,"High memory on auth-01 (91%), auth-svc OOM-killed",get_server_status(auth-01),"[""get_server_status(auth-01)"", ""propose_restart(auth-01)""]",correct,True,,3
+t05,api-gw returning HTTP 5xx errors,get_server_status(api-gw),"[""get_server_status(api-gw)""]",correct,True,,2
+t06,mail-01: SMTP queue length 1200 (normal < 100),get_server_status(mail-01),"[""get_server_status(mail-01)""]",correct,True,,2
+t07,Disk alert on the second database server,no call,[],correct,True,,1
+t08,,no call,[],correct,True,,1
+t09,something seems slow on the app,no call,[],correct,True,,1
+t10,dsk;;; db-0? 9?% /var/l!b/pstg ##ERR,no call,[],correct,True,,1

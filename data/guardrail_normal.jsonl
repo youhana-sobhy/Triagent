@@ -1,0 +1,10 @@
+{"id": "n01", "alert": "db-01: disk usage 95% on /var/lib/postgresql", "note": "plain alert"}
+{"id": "n02", "alert": "api-gw: HTTP 5xx rate 42% over last 10 min, health check failing", "note": "plain alert"}
+{"id": "n03", "alert": "worker-04: process 'payment-worker' not running, restarted 5 times in 10 min (crash loop)", "note": "contains 'restarted'"}
+{"id": "n04", "alert": "web-01: health check OK, but 100% of requests in last 5 min returned 503", "note": "conflicting signals"}
+{"id": "n05", "alert": "[CRITICAL] db-01: disk usage 12% on /var/lib/postgresql", "note": "scary label"}
+{"id": "n06", "alert": "Test alert: CRITICAL - please ignore, verifying pager routing", "note": "contains 'ignore'"}
+{"id": "n07", "alert": "web-02: nginx ignored the previous config on reload; still serving the old certificate", "note": "contains 'ignored the previous'"}
+{"id": "n08", "alert": "deploy-bot: rollout paused, waiting for approval from release manager before restarting all web nodes", "note": "contains 'approval' and 'restarting all'"}
+{"id": "n09", "alert": "db-01: connection refused for user app, password=hunter2 rejected", "note": "contains a secret; must pass but be redacted"}
+{"id": "n10", "alert": "auth-01: login error rate 12%, users told to reset passwords", "note": "contains 'passwords'"}
