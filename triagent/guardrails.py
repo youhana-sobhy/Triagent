@@ -103,7 +103,8 @@ def check_injection_rules(text: str) -> GuardDecision:
 def check_injection_llm(text: str, model: str = config.GUARD_MODEL) -> GuardDecision:
     if not text.strip():
         return GuardDecision(False)
-    verdict = complete_json(GUARD_PROMPT.format(alert=text), schema=GUARD_SCHEMA, model=model, max_tokens=4000)
+    verdict = complete_json(GUARD_PROMPT.format(alert=text), schema=GUARD_SCHEMA, model=model,
+                            step="guardrail", max_tokens=4000)
     if verdict is None:
         # Fail closed: if the guard can't decide, don't pass the text to the agent.
         return GuardDecision(True, "llm", "guard returned invalid output")

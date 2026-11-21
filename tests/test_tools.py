@@ -1,6 +1,5 @@
-import pytest
-
-from triagent.tools import TOOL_DEFINITIONS, ApprovalQueue, RestartExecutor, StatusProvider, ToolRunner
+from approvals.store import ApprovalStore
+from triagent.tools import TOOL_DEFINITIONS, StatusProvider, ToolRunner
 
 
 def test_get_server_status_known_server():
@@ -19,33 +18,24 @@ def test_scenario_overrides():
 
 
 def test_propose_restart_only_files_a_pending_request():
-    runner = ToolRunner()
+    runner = ToolRunner(alert_id="a08")
     result, is_error = runner.run("propose_restart", {"server": "worker-04", "reason": "crash loop"})
     assert not is_error and result["status"] == "pending"
-    assert [r.status for r in runner.approvals.requests] == ["pending"]
+    assert [r.status for r in runner.approvals.list()] == ["pending"]
 
 
-def test_executor_refuses_unapproved_restart():
-    queue, executor = ApprovalQueue(), RestartExecutor()
-    request = queue.propose("worker-04", "crash loop")
-    with pytest.raises(PermissionError):
-        executor.execute(request)
-    assert executor.executed == []
+def test_retried_propose_restart_creates_exactly_one_request():
+    runner = ToolRunner(approvals=ApprovalStore(), alert_id="a08")
+    first, _ = runner.run("propose_restart", {"server": "worker-04", "reason": "crash loop"})
+    second, _ = runner.run("propose_restart", {"server": "worker-04", "reason": "crash loop (retry)"})
+    assert first["approval_request_id"] == second["approval_request_id"]
+    assert second["duplicate"] is True
+    assert len(runner.approvals.list()) == 1
 
 
-def test_executor_runs_only_after_human_approval():
-    queue, executor = ApprovalQueue(), RestartExecutor()
-    request = queue.propose("worker-04", "crash loop")
-    queue.approve(request.id, approver="on-call engineer")
-    executor.execute(request)
-    assert executor.executed == [request]
-
-
-def test_approval_requires_a_named_human():
-    queue = ApprovalQueue()
-    request = queue.propose("worker-04", "crash loop")
-    with pytest.raises(ValueError):
-        queue.approve(request.id, approver="")
+def test_propose_restart_unknown_server_is_an_error():
+    result, is_error = ToolRunner().run("propose_restart", {"server": "db-99", "reason": "x"})
+    assert is_error
 
 
 def test_agent_has_no_execute_tool():

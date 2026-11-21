@@ -1,0 +1,11 @@
+# Health limits for monitor/summarize_logs.py. Placeholders: tune them to your own traffic and budget.
+# A metric past its limit prints a WARN line.
+
+max_error_rate: 0.05            # share of runs that ended in error (degraded runs count separately)
+max_degraded_rate: 0.10         # share of runs answered by the rule-based fallback
+max_p95_latency_s: 30           # seconds per alert, end to end
+max_daily_cost_usd: 5.00        # sum of cost for runs logged on the same day
+max_tool_failure_rate: 0.10     # share of tool calls that returned an error
+max_guardrail_block_rate: 0.20  # a spike can mean an attack, or a filter that became too strict
+min_quality_score: 4.0          # average clarity (1-5) on the online quality sample
+min_grounded_rate: 1.0          # share of answers whose cited runbook was actually retrieved

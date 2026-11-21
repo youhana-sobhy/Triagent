@@ -81,7 +81,7 @@ def main() -> None:
                               "severity_correct": sev,
                               "not_ok": {r["id"]: r["diagnosis"] for r in rows if r["diagnosis"] != "ok"},
                               "severity_failures": [r["id"] for r in rows if not r["severity_ok"]]}
-    save_summary(summary, "stage2")
+    save_summary(summary, "stage2_retrieval_only" if args.retrieval_only else "stage2")
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ CLASSIFY_SCHEMA = {
 }
 
 
-def classify(alert: str, version: str = "v2", model: str = config.GENERATOR_MODEL) -> dict | None:
+def classify(alert: str, version: str = "v2", model: str = config.CLASSIFY_MODEL) -> dict | None:
     """One call -> {"severity", "explanation"}. None if the reply isn't valid JSON."""
     return complete_json(PROMPTS[version].format(alert=alert), schema=CLASSIFY_SCHEMA, model=model)
 
@@ -98,6 +98,6 @@ RAG_SCHEMA = {
 
 
 def classify_with_runbooks(alert: str, retrieved_ids: list[str],
-                           model: str = config.GENERATOR_MODEL) -> dict | None:
+                           model: str = config.CLASSIFY_MODEL) -> dict | None:
     prompt = RAG_PROMPT.format(alert=alert, runbooks=format_runbooks(retrieved_ids))
     return complete_json(prompt, schema=RAG_SCHEMA, model=model)

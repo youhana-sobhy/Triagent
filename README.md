@@ -25,7 +25,8 @@ RAG over runbooks · tool use · structured outputs · guardrails · human-in-th
 | AI agents and tool use | The model decides when to check a server, uses the result, and can only *propose* a restart |
 | AI safety and guardrails | Prompt-injection filter, secret redaction, output validation, human approval gate |
 | **Evaluation (the main focus)** | Hand-labeled datasets, code graders, an LLM judge, a held-out set, component and end-to-end tests |
-| Engineering habits | Typed, modular Python package, 43 unit tests, reproducible eval scripts, results saved per run |
+| Production thinking | Structured logs, monitoring with alerts, retries, fallback when the AI is down, human approval with an audit trail, CI |
+| Engineering habits | Typed, modular Python package, 83 unit tests, reproducible eval scripts, results saved per run |
 | Honest reporting | Failures are listed next to wins: 100% on my tuning set, **80% on unseen alerts** |
 
 ## For engineers: what it covers
@@ -40,7 +41,8 @@ RAG over runbooks · tool use · structured outputs · guardrails · human-in-th
 | Evals, layers 1–4 | Dataset design with tricky cases → code + LLM graders → component evals (retrieval, tool calls) → end-to-end and adversarial runs |
 | Grader validation | LLM judge is a **different model** (Opus judges Sonnet); blind hand-label tool to calibrate it |
 | Reliability | pass@k and pass^k estimators, repeated-trial harness |
-| Cost & latency | Every API call logged with tokens, seconds and USD; before/after harness comparing a large and a small model |
+| Cost & latency | Every API call logged with tokens, seconds and USD; token profile; prompt caching option; one-change-at-a-time before/after harness (caching or a smaller model) |
+| Production operations | JSONL traces with `run_id` and redaction, p50/p95 and quality monitoring with thresholds, transient-only retries with backoff + jitter, idempotent actions, degraded mode, approval CLI with audit trail, SLOs and error budget ([docs/reliability.md](docs/reliability.md)), CI |
 | MCP (conceptual) | How the runbook search and server status would be exposed as an MCP server ([below](#how-mcp-would-fit)) |
 
 ---
@@ -162,11 +164,55 @@ reporting pass@1, pass@3 and pass^3), but **not run yet**. I paused the paid run
 
 ### Stage 5: cost and latency
 
-Every API call is logged with input/output tokens, latency and USD cost (`triagent/llm.py`). A single full-pipeline
-triage costs about **$0.016 and 11 s** (3 API calls: guard, tool call, final answer).
+One real full-pipeline triage costs about **$0.016 and 11 s** (3 API calls: guard, agent tool call, agent answer).
+Measuring before optimizing, using the free token-counting endpoint (`python -m evals.token_profile`):
 
-The before/after experiment (`python -m evals.stage5_cost`: Sonnet 5.5 vs Haiku 5.5 as the agent, comparing accuracy, cost
-and median/p90 latency on all 20 alerts) is built but **not run yet**, for the same reason.
+| Part of one agent request | Tokens | Same for every alert? |
+| --- | --- | --- |
+| Tool definitions + system prompt | **1,282** | yes |
+| Alert + retrieved runbooks | 1,065 | no |
+
+54% of every agent request is identical static text, sent at least twice per alert. That makes **prompt caching**
+the one change to test first: `cache_control` on the system prompt (render order is tools → system → messages, so
+the cache covers both), with everything per-alert placed after it. Expected saving is about 30% per alert (an estimate,
+not a measurement). The before/after run is built (`python -m evals.stage5_cost --experiment caching`) but
+**not run yet**. Full write-up: [results/cost_latency.md](results/cost_latency.md).
+
+---
+
+## Production readiness
+
+Built from the [production-readiness spec](docs/PRODUCTION_PLAN.md): the parts that turn a demo into something you could run on call.
+Everything here runs **for free** in offline mode (`TRIAGENT_OFFLINE=1`): a fake model client returns simulated
+answers and can inject 429/529 errors, so logging, retries, fallback and monitoring are exercised in CI without an API key.
+
+| Concern | What I built | Where |
+| --- | --- | --- |
+| **Structured logging** | One JSON event per model call, tool call, retrieval and guardrail decision. Each event records `run_id`, step, model, `prompt_version`, tokens (including cache tokens), seconds, cost, retries, status and guardrail outcome. Secrets are redacted before anything is written | [`triagent/logging_utils.py`](triagent/logging_utils.py) |
+| **Monitoring** | Error and degraded rates, latency p50/p95, tokens, cost, tool failures, block rate, retries, grounding, plus an **online quality sample** scored by a different model. `WARN` when a metric crosses [`config/thresholds.yaml`](config/thresholds.yaml) | [`monitor/summarize_logs.py`](monitor/summarize_logs.py), [example](results/monitoring_example.md) |
+| **Retries and timeouts** | Retries only transient errors (429/5xx/529/timeouts/connection), exponential backoff with jitter, capped by attempts *and* total time. 4xx errors are never retried | [`triagent/retry.py`](triagent/retry.py) |
+| **Graceful degradation** | If the model stays down, the system returns a rule-based answer flagged `needs_review` instead of crashing. Its accuracy is measured: 18/20, 8/10 held-out | [`triagent/fallback.py`](triagent/fallback.py) |
+| **Idempotency** | `propose_restart` is keyed on (server, alert), so a retried step can never file a duplicate request | [`approvals/store.py`](approvals/store.py) |
+| **Human approval** | Requests are pending → approved / rejected → executed. A review CLI requires a reviewer's name, every request executes at most once, and the audit trail is append-only | [`approvals/`](approvals/) |
+| **Config, not code** | Model per step, prices, retry limits, caching flag and thresholds all live in YAML | [`config/`](config/) |
+| **CI** | Every push runs the unit tests and the free eval suite | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
+| **Reliability write-up** | SLIs/SLOs for availability, latency and quality, error budget, fallback policy, what's different about LLM services | [docs/reliability.md](docs/reliability.md) |
+
+```text
+$ python -m approvals.review list
+req-cfea0850  pending   worker-04  alert=a08  payment-worker crash loop
+$ python -m approvals.review execute
+Executed 0 approved request(s).                         <- nothing runs without a human
+$ python -m approvals.review approve req-cfea0850 --reviewer "on-call" --note "checked logs"
+$ python -m approvals.review execute
+  [fake executor] would restart worker-04 now
+Executed 1 approved request(s).
+$ python -m approvals.review execute
+Executed 0 approved request(s).                         <- approved once, executed once
+```
+
+Monitoring on 30 simulated runs with 15% of model calls failing on purpose: **15 retries, 0 errors, 0 degraded runs**,
+and one `WARN` because the attack alerts pushed the guardrail block rate to 27%. That spike is exactly what the alert is for.
 
 ---
 
@@ -196,25 +242,36 @@ The approval gate stays on the server side, so no client can bypass it, whicheve
 
 ```text
 triagent/               the assistant
-  agent.py              full pipeline: guard -> retrieve -> tool loop -> answer -> validate
+  agent.py              full pipeline: guard -> retrieve -> tool loop -> answer -> validate -> review flag
   classify.py           Stage 1 and 2 prompts (single-call versions, evaluated on their own)
   retrieve.py           Chroma indexing and search
-  tools.py              get_server_status, propose_restart, approval queue, restart executor
+  tools.py              get_server_status, propose_restart
   guardrails.py         secret redaction, injection rules + LLM check, output validation
-  llm.py                API wrapper with token, latency and cost logging
-  config.py             models, prices, paths
+  llm.py                API wrapper: retries, timing, tokens, cost, logging, optional prompt caching
+  retry.py              retry only transient errors, backoff + jitter, attempt and time limits
+  fallback.py           rule-based degraded mode
+  logging_utils.py      structured JSONL traces with run_id, redaction
+  fake_llm.py           offline client: simulated answers + fault injection (CI, demos)
+  config.py             loads config/*.yaml
+approvals/              human-in-the-loop: store (idempotent, execute-once, audit trail) + review CLI
+monitor/                summarize_logs.py: health + quality report with threshold warnings
+config/                 settings.yaml (models per step, retries, caching) · prices.yaml · thresholds.yaml
 evals/                  one script per stage + shared graders
   grading.py            code graders: exact match, recall@k, citations, tool calls, pass@k, pass^k
   stage1_classify.py  stage2_rag.py  stage3_tools.py  stage4_guardrails.py  stage5_cost.py
+  run_pipeline.py       run a dataset through the full pipeline (feeds the logs)
+  token_profile.py      where the input tokens go (free counting endpoint)
+  fallback_baseline.py  accuracy of degraded mode (free)
   hand_label.py         blind human scoring to validate the LLM judge
   faithfulness_check.py human check: does each action match its cited runbook?
-  run_evals.py          run everything (the regression suite)
+  run_all.py            the whole suite in one command (the regression check)
 data/                   alerts.jsonl (20) · held_out.jsonl (10) · tool_cases.jsonl (10)
                         attacks.jsonl (10) · guardrail_normal.jsonl (10) · runbooks/ (5)
-tests/                  43 unit tests (no API calls)
-results/                saved CSV + JSON for every eval run
-docs/                   project plan, labeling guide, LinkedIn post, image
+tests/                  83 unit tests (no API calls)
+results/                saved CSV + JSON for every eval run, cost_latency.md, monitoring_example.md
+docs/                   project plan, labeling guide, reliability.md, LinkedIn post, image
 scripts/                make_social_card.py (renders the image from results/)
+logs/                   runs.jsonl traces (git-ignored)
 ```
 
 ## Run it
@@ -228,12 +285,14 @@ copy .env.example .env         # then put your ANTHROPIC_API_KEY in .env
 
 ```bash
 python main.py "db-01: disk usage 95% on /var/lib/postgresql" --trace   # triage one alert
-python -m pytest                                                        # 43 unit tests, free
-python -m evals.run_evals --free                                        # tests + retrieval eval, free
-python -m evals.run_evals                                               # full suite (paid API calls)
+python evals/run_all.py --free        # 83 tests + free evals + offline pipeline + monitoring, no API key needed
+python evals/run_all.py               # full suite including paid evals
+python -m monitor.summarize_logs      # health and quality report from logs/runs.jsonl
+python -m approvals.review list       # restart requests waiting for a human
 ```
 
 Any eval script accepts `--limit N` to run on the first N cases while iterating cheaply.
+Set `TRIAGENT_OFFLINE=1` to run anything with the simulated model (add `TRIAGENT_FAKE_FAILURE_RATE=0.2` to inject errors).
 
 ## Status
 
@@ -241,6 +300,8 @@ Any eval script accepts `--limit N` to run on the first N cases while iterating 
 - [x] Stage 2: 5 runbooks, Chroma retrieval, recall@3, grounded citations, failure diagnosis
 - [x] Stage 3: tool definitions, agent loop, 10 tool-call cases
 - [x] Stage 4: injection set, catch / false-block rates, approval gate verified under attack
+- [x] Production readiness: structured logs, monitoring + thresholds, retries/timeouts, idempotency, degraded mode, approvals with audit trail, CI, [reliability write-up](docs/reliability.md)
+- [x] Stage 5: cost logging, token profile, prompt-caching option, one-change-at-a-time experiment harness
 - [ ] Stage 4: pass^3 reliability run (harness ready)
-- [ ] Stage 5: before/after cost run (logging and harness ready)
+- [ ] Stage 5: before/after caching run on the real model (harness ready)
 - [ ] Human calibration: blind-label 5 explanations (`evals/hand_label.py`, 2 of 5 done) and 5 faithfulness checks (`evals/faithfulness_check.py`)

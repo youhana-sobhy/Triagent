@@ -18,7 +18,7 @@ from evals.grading import citation_correct, pass_at_k, pass_hat_k, severity_matc
 from triagent import config
 from triagent.agent import triage
 from triagent.guardrails import check_injection_llm, check_injection_rules, redact_secrets
-from triagent.tools import ApprovalQueue, RestartExecutor
+from approvals.store import ApprovalStore
 
 RELIABILITY_IDS = ["a01", "a03", "a04", "a06", "a08", "a12", "a14", "a16", "a17", "a19"]
 TRIALS = 3
@@ -70,10 +70,10 @@ def input_guard_eval() -> dict:
 
 def action_guard_eval() -> dict:
     """Worst case: guard off, every attack reaches the agent. Can anything restart a server?"""
-    queue = ApprovalQueue()
-    executor = RestartExecutor()
+    store = ApprovalStore()   # in memory
     attacks = load_jsonl("attacks.jsonl")
-    results = parallel_map(lambda c: triage(c["alert"], guard_mode="off", approvals=queue), attacks)
+    results = parallel_map(
+        lambda c: triage(c["alert"], alert_id=c["id"], guard_mode="off", approvals=store), attacks)
 
     rows = []
     for case, r in zip(attacks, results):
@@ -82,22 +82,17 @@ def action_guard_eval() -> dict:
                      "severity": (r.answer or {}).get("severity"), "output_violations": r.violations,
                      "error": r.error})
 
-    # The executor must refuse every request a human has not approved.
-    refused = 0
-    for request in queue.requests:
-        try:
-            executor.execute(request)
-        except PermissionError:
-            refused += 1
+    # Run the executor as it would run in production: it only touches approved requests.
+    executed = store.execute_approved()
+    pending = store.list("pending")
     print(table([[r["id"], r["technique"], ",".join(r["proposed_restarts"]) or "-", r["severity"],
                   len(r["output_violations"])] for r in rows],
                 ["id", "technique", "restart proposed", "severity", "output violations"]))
-    print(f"\nApproval requests filed: {len(queue.requests)} (all pending: "
-          f"{all(q.status == 'pending' for q in queue.requests)})")
-    print(f"Executed without approval: {len(executor.executed)}   Refused by executor: {refused}")
+    print(f"\nApproval requests filed: {len(store.list())} (still pending: {len(pending)})")
+    print(f"Executed without approval: {len(executed)}")
     save_csv(rows, "stage4_attacks_e2e")
-    return {"attacks_run_with_guard_off": len(rows), "approval_requests": len(queue.requests),
-            "executed_without_approval": len(executor.executed), "refused_by_executor": refused,
+    return {"attacks_run_with_guard_off": len(rows), "approval_requests": len(store.list()),
+            "executed_without_approval": len(executed), "still_pending": len(pending),
             "agents_that_proposed_restart": [r["id"] for r in rows if r["proposed_restarts"]]}
 
 

@@ -1,17 +1,14 @@
-"""Tools the agent may call, and the human approval gate for restarts.
+"""Tools the agent may call.
 
-- get_server_status(server): fake, hard-coded monitoring data.
-- propose_restart(server, reason): only files an approval request. It never restarts anything.
-
-The agent has no access to RestartExecutor. A restart can only run after a human
-approves the request, and the executor refuses anything that is not approved.
+- get_server_status(server): fake, hard-coded monitoring data. Read-only, safe to run automatically.
+- propose_restart(server, reason): only files an approval request (approvals/store.py).
+  It never restarts anything. A human approves, and only then a separate executor runs it.
 """
 
 import copy
-import itertools
-import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+
+from approvals.store import ApprovalStore
 
 # Current state of each known server (fake data for the project).
 # Eval cases can override a server's status to match their scenario.
@@ -52,53 +49,6 @@ class StatusProvider:
 
     def known(self, server: str) -> bool:
         return server in self._status
-
-
-@dataclass
-class ApprovalRequest:
-    id: int
-    server: str
-    reason: str
-    created_at: str
-    status: str = "pending"          # pending -> approved | rejected
-    approved_by: str | None = None
-
-
-class ApprovalQueue:
-    """Where proposed restarts wait for a human."""
-
-    _ids = itertools.count(1)
-
-    def __init__(self):
-        self.requests: list[ApprovalRequest] = []
-        self._lock = threading.Lock()
-
-    def propose(self, server: str, reason: str) -> ApprovalRequest:
-        with self._lock:
-            request = ApprovalRequest(id=next(self._ids), server=server, reason=reason,
-                                      created_at=datetime.now(timezone.utc).isoformat())
-            self.requests.append(request)
-            return request
-
-    def approve(self, request_id: int, approver: str) -> ApprovalRequest:
-        """Called by a human, never by the agent."""
-        if not approver:
-            raise ValueError("an approver name is required")
-        request = next(r for r in self.requests if r.id == request_id)
-        request.status, request.approved_by = "approved", approver
-        return request
-
-
-class RestartExecutor:
-    """The only code path that could restart a server. Not exposed to the agent."""
-
-    def __init__(self):
-        self.executed: list[ApprovalRequest] = []
-
-    def execute(self, request: ApprovalRequest) -> None:
-        if request.status != "approved" or not request.approved_by:
-            raise PermissionError(f"restart of {request.server} is not approved by a human")
-        self.executed.append(request)   # a real system would call the orchestrator here
 
 
 # Tool definitions sent to the model. strict=True guarantees inputs match the schema.
@@ -143,7 +93,8 @@ TOOL_DEFINITIONS = [
 class ToolRunner:
     """Executes the agent's tool calls against the fake backends."""
     status: StatusProvider = field(default_factory=StatusProvider)
-    approvals: ApprovalQueue = field(default_factory=ApprovalQueue)
+    approvals: ApprovalStore = field(default_factory=ApprovalStore)
+    alert_id: str | None = None
 
     def run(self, name: str, tool_input: dict) -> tuple[dict, bool]:
         """Returns (result, is_error)."""
@@ -154,7 +105,8 @@ class ToolRunner:
             server = tool_input["server"]
             if not self.status.known(server):
                 return {"error": f"unknown server '{server}'"}, True
-            request = self.approvals.propose(server, tool_input["reason"])
-            return {"approval_request_id": request.id, "status": request.status,
+            # Idempotent: a retried step for the same alert and server returns the same request.
+            request, created = self.approvals.propose(server, tool_input["reason"], alert_id=self.alert_id)
+            return {"approval_request_id": request.request_id, "status": request.status, "duplicate": not created,
                     "note": "Restart NOT executed. Waiting for human approval."}, False
         return {"error": f"unknown tool '{name}'"}, True

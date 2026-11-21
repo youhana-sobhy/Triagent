@@ -1,42 +1,52 @@
-"""Paths, model choices and prices. Everything tunable lives here."""
+"""Paths and settings. Tunable values live in config/*.yaml, not in code."""
 
 import os
 from pathlib import Path
 
+import yaml
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
+CONFIG_DIR = ROOT / "config"
 DATA_DIR = ROOT / "data"
 RUNBOOKS_DIR = DATA_DIR / "runbooks"
 RESULTS_DIR = ROOT / "results"
 CHROMA_DIR = ROOT / "chroma_db"
+APPROVALS_DIR = ROOT / "approvals"
 
 # The API key is read from .env at the project root (never committed).
 load_dotenv(ROOT / ".env")
 
-# --- Models -------------------------------------------------------------
-# Generator: writes the triage answers. Override with TRIAGENT_MODEL.
-GENERATOR_MODEL = os.getenv("TRIAGENT_MODEL", "claude-sonnet-5-5")
-# Grader: scores explanation clarity. Must differ from the generator,
-# because a model tends to rate its own writing too highly.
-GRADER_MODEL = "claude-opus-5-5"
-# Guard: cheap, fast model that screens alert text for prompt injection.
-GUARD_MODEL = "claude-haiku-5-5"
-# Small model used in the Stage 5 cost optimization.
-SMALL_MODEL = "claude-haiku-5-5"
 
-# --- Retrieval ----------------------------------------------------------
-TOP_K = 3
+def _load(name: str) -> dict:
+    return yaml.safe_load((CONFIG_DIR / name).read_text(encoding="utf-8")) or {}
 
-# --- Reliability --------------------------------------------------------
-REQUEST_TIMEOUT_S = 120     # per API request
-MAX_RETRIES = 3             # SDK retries 429 / 5xx / connection errors with backoff
-MAX_AGENT_TURNS = 6         # hard stop for the tool-use loop
 
-# --- Prices (USD per 1M tokens), Anthropic API list prices, Nov 2026 ------
-# (input, output, cache read). Cache writes cost 1.25x input.
-PRICES = {
-    "claude-opus-5-5":   (4.00, 20.00, 0.20),
-    "claude-sonnet-5-5": (2.00, 10.00, 0.10),
-    "claude-haiku-5-5":  (0.10, 0.50, 0.01),
-}
+SETTINGS = _load("settings.yaml")
+PRICES: dict[str, dict] = _load("prices.yaml").get("models", {})
+THRESHOLDS: dict = _load("thresholds.yaml")
+
+_models = SETTINGS["models"]
+GENERATOR_MODEL = os.getenv("TRIAGENT_MODEL", _models["agent"])
+CLASSIFY_MODEL = os.getenv("TRIAGENT_MODEL", _models["classify"])
+GUARD_MODEL = _models["guard"]
+GRADER_MODEL = _models["grader"]
+SMALL_MODEL = _models["small"]
+
+PROMPT_VERSION = SETTINGS["prompt_version"]
+TOP_K = SETTINGS["retrieval"]["top_k"]
+
+_rel = SETTINGS["reliability"]
+REQUEST_TIMEOUT_S = _rel["request_timeout_s"]
+SDK_MAX_RETRIES = _rel["sdk_max_retries"]
+RETRY = _rel["retry"]
+MAX_AGENT_TURNS = _rel["max_agent_turns"]
+
+PROMPT_CACHING = os.getenv("TRIAGENT_PROMPT_CACHING", str(SETTINGS["optimization"]["prompt_caching"])).lower() in (
+    "1", "true", "yes")
+
+# Offline mode: a fake client returns simulated answers. Free, deterministic, used by CI and demos.
+OFFLINE = os.getenv("TRIAGENT_OFFLINE", "0").lower() in ("1", "true", "yes")
+LOG_PATH = ROOT / (SETTINGS["logging"]["offline_path"] if OFFLINE else SETTINGS["logging"]["path"])
+if os.getenv("TRIAGENT_LOG_PATH"):
+    LOG_PATH = Path(os.environ["TRIAGENT_LOG_PATH"])

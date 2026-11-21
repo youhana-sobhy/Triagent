@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  free-evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # No API key needed: unit tests, retrieval, fallback and the offline (simulated) pipeline.
+      # To run paid evals in CI later, add ANTHROPIC_API_KEY as a repository secret and a separate job.
+      - name: Run free eval suite
+        run: python evals/run_all.py --free
+
+      - name: Upload summary and offline logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-summary
+          path: |
+            results/day9_summary.md
+            results/monitoring_example.md
+            logs/runs_offline.jsonl

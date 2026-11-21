@@ -1,0 +1,32 @@
+# Runtime settings. Environment variables override some values (see triagent/config.py).
+
+# Model per step (model tiering is a one-line change here).
+models:
+  agent: claude-sonnet-5-5      # writes the triage answer (env: TRIAGENT_MODEL)
+  classify: claude-sonnet-5-5   # Stage 1/2 single-call classifier
+  guard: claude-haiku-5-5       # prompt-injection classifier
+  grader: claude-opus-5-5       # LLM judge; must differ from the generator
+  small: claude-haiku-5-5       # candidate for the cost experiment
+
+# Bump when a prompt changes, so logs show which prompt produced which answer.
+prompt_version: agent-v3
+
+retrieval:
+  top_k: 3
+
+reliability:
+  request_timeout_s: 60         # per API request
+  sdk_max_retries: 0            # 0: our retry helper owns retries, so every retry is counted and logged
+  retry:
+    max_attempts: 4             # 1 try + up to 3 retries
+    base_delay_s: 1.0
+    max_delay_s: 8.0
+    max_total_s: 45.0
+  max_agent_turns: 6
+
+optimization:
+  prompt_caching: false         # mark tools + system prompt as cacheable (env: TRIAGENT_PROMPT_CACHING=1)
+
+logging:
+  path: logs/runs.jsonl
+  offline_path: logs/runs_offline.jsonl   # simulated runs never mix with real ones

@@ -18,3 +18,8 @@ chroma_db/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Runtime data (traces and approval queue are local state, not source)
+logs/*.jsonl
+approvals/*.jsonl
+approvals/*.tmp
